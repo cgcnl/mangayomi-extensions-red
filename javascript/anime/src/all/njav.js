@@ -1,9 +1,9 @@
 const mangayomiSources = [{
     "name": "Njav",
     "lang": "all",
-    "baseUrl": "https://njav.tv/en",
+    "baseUrl": "https://123av.com/en",
     "apiUrl": "",
-    "iconUrl": "https://njav.tv/assets/njav/images/favicon.png",
+    "iconUrl": "https://123av.com/assets/njav/images/favicon.png",
     "typeSource": "single",
     "isManga": false,
     "itemType": 1,
@@ -186,19 +186,143 @@ const mangayomiSources = [{
     }
   
     async getVideoList(url) {
-      const res = await new Client().get(url);
+      const real_url = this.decode_video_url(url);
+      const res = await new Client().get(real_url);
       const doc = new Document(res.body);
-      const str = doc.selectFirst("div#player").attr("v-scope").match(/, {([^']*)\)/)[1];
-      const data = JSON.parse("{" + str);
-      return [{
-        url: data["stream"],
-        originalUrl: data["stream"],
-        quality: "Origin",
-        headers: {
-          Referer: "https://javplayer.me/",
-          Origin: "https://javplayer.me"
+      let packed_js = "";
+      for (const script of doc.select("script")) {
+        if (script.text && script.text.includes("eval(function(p,a,c,k,e,d)")) {
+          packed_js = script.text;
+            break;
         }
-      }];
+      }
+      const regex = /return p}\('(.+?)',(\d+),(\d+),'(.+?)'\.split\('\|'\)/;
+      const match = packed_js.match(regex);
+      if (match) {
+        const p = match[1];
+        const a = parseInt(match[2], 10);
+        const c = parseInt(match[3], 10);
+        const k = match[4].split('|');
+        return await this.unpackAndGetStream(p, a, c, k);
+      } else {
+        console.error("Không tìm thấy pattern trong packed_js");
+        return [];
+      }
+    }
+
+    async unpackAndGetStream(p, a, c, k) {
+      const preference = new SharedPreferences();
+
+      const unpacked_js = this.decrypt_js_content(p, a, c, k);
+
+      function extractXParams(codeString) {
+        const paramsList = [];
+        const regex = /x\(([^,]+),([^)]+)\)/g;
+        let match;
+
+        while ((match = regex.exec(codeString)) !== null) {
+          const arg1 = parseInt(match[1].trim(), 10);  // Arg1 (group 1)
+          const arg2 = parseInt(match[2].trim(), 10);  // Arg2 (group 2)
+          paramsList[arg1] = arg2;
+        }
+
+        return paramsList;
+      }
+
+      const arr = extractXParams(unpacked_js);
+      const media = JSON.parse(String.fromCharCode.apply(null,arr.map((v,i)=>v^i)));
+
+      const final_url = media.stream;
+
+      const headers = {
+        'Origin': preference.get("url"),
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+      }
+      const response = await new Client().get(final_url, headers);
+      const codigo = response.body;
+
+      const streams = [];
+      const lines = codigo.split('\n');
+      const prefix = final_url.replace('playlist.m3u8', '').replace('video.m3u8', '');
+      const stream_headers =  {
+          Referer: "https://surrit.store/",
+          Origin: "https://surrit.store"
+        }
+      for (const line of lines) {
+        if (line.startsWith('#EXT-X-STREAM-INF')) {
+          const res_part_match = line.match(/RESOLUTION=\d+x(\d+)/);
+          if (res_part_match) {
+            streams.push({ quality: res_part_match[1], url: '', originalUrl: '', headers: stream_headers });
+          }
+        } else if (streams.length > 0 && !line.startsWith('#') && streams[streams.length - 1].url === '') {
+          let url = line.startsWith('http') ? line : prefix + line;
+          streams[streams.length - 1].url = url;
+          streams[streams.length - 1].originalUrl = url;
+        }
+      }
+
+      return streams;
+    }
+
+
+    decode_video_url(decoded_url) {
+      const c = "MW4RNiPvelzziJcx".split("").map(char => char.charCodeAt(0));
+
+      function base64Decode(str) {
+        const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+        const output = [];
+        let i = 0;
+        while (i < str.length) {
+          const enc1 = chars.indexOf(str[i++]);
+          const enc2 = chars.indexOf(str[i++]);
+          const enc3 = chars.indexOf(str[i++]);
+          const enc4 = chars.indexOf(str[i++]);
+
+          const chr1 = (enc1 << 2) | (enc2 >> 4);
+          const chr2 = ((enc2 & 15) << 4) | (enc3 >> 2);
+          const chr3 = ((enc3 & 3) << 6) | enc4;
+
+          output.push(chr1);
+          if (enc3 !== 64) output.push(chr2);
+          if (enc4 !== 64) output.push(chr3);
+        }
+        return new Uint8Array(output);
+      }
+
+      const decodedArray = base64Decode(decoded_url);
+
+      const result = new Uint8Array(decodedArray.length);
+      for (let t = 0; t < decodedArray.length; t++) {
+        result[t] = decodedArray[t] ^ c[t % c.length];
+      }
+
+      return String.fromCharCode.apply(null, result);
+    }
+
+    decrypt_js_content(p, a, c, k) {
+      let d = {};
+      function e(c) {
+        return (c < a ? "" : e(parseInt(c / a))) + ((c = c % a) > 35 ? String.fromCharCode(c + 29) : c.toString(36));
+      };
+      if (!"".replace(/^/, String)) {
+        while (c--) {
+          d[e(c)] = k[c] || e(c);
+        }
+        k = [function (e) {
+          return d[e];
+        }];
+        e = function () {
+          return "\\w+";
+        };
+        c = 1;
+      }
+
+      while (c--) {
+        if (k[c]) {
+          p = p.replace(new RegExp("\\b" + e(c) + "\\b", "g"), k[c]);
+        }
+      }
+      return p;
     }
   
     getFilterList() {

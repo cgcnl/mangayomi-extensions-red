@@ -154,7 +154,8 @@ const mangayomiSources = [{
           streams[streams.length - 1].originalUrl = url;
         }
       }
-
+      // sort by quality desc
+      streams.sort((a, b) => parseInt(b.quality) - parseInt(a.quality));
       return streams;
     }
 

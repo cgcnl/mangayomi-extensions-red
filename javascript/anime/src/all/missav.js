@@ -1,14 +1,14 @@
 const mangayomiSources = [{
     "name": "MissAV",
     "lang": "all",
-    "baseUrl": "https://missav.ws",
+    "baseUrl": "http://missav.ws",
     "apiUrl": "",
     "iconUrl": "https://missav.ws/img/favicon.png",
     "typeSource": "single",
     "isManga": false,
     "itemType": 1,
     "isNsfw": true,
-    "version": "0.0.1",
+    "version": "0.0.2",
     "apiUrl": "",
     "dateFormat": "",
     "dateFormatLocale": "",
@@ -29,20 +29,76 @@ const mangayomiSources = [{
     async request(url) {
       const headers = {
         'Origin': this.source.baseUrl,
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36'
+        'upgrade-insecure-requests': '1',
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36'
       }
       const preference = new SharedPreferences();
       if (!url.includes("https://")) {
-        const res = await new Client().get(this.source.baseUrl + "/" + preference.get("lang") + url, headers);
+        // const res = await new Client().get(this.source.baseUrl + '/' + preference.get("lang") + url, headers);
+        const res = await new Client().get("http://missav.ws/" + preference.get("lang") + url, headers);
         return res.body;
       } else {
-        const res = await new Client().get(url, headers);
+        const url1 = url.replace('https://', 'http://');
+        const res = await new Client().get(url1, headers);
         return res.body;
       }
     }
 
+    async getCategoryUrls() {
+       const res = await this.request("/genres");
+        // const res = await this.request("https://missav.ws/dm291/en/today-hot");
+        const doc = new Document(res);
+        const pre_categories = [
+            'today-hot',
+            'new',
+            'english-subtitle',
+            'uncensored-leak',
+            'madou',
+            'twav',
+            'furuke',
+            'klive',
+            'clive',
+            'fc2',
+            'heyzo',
+            'tokyo-hot',
+            '1pondo',
+            'caribbeancom',
+            'caribbeancompr',
+            '10musume',
+            'pacopacomama',
+            'gachinco',
+            'xxxav',
+            'marriedslash',
+            'naughty4610',
+            'naughty0930',
+            'vr',
+            'siro',
+            'luxu',
+            'gana',
+            'maan',
+            'scute',
+            'ara'
+        ];
+        const elements = doc.select("nav a");
+        const categories = {};
+        for (const element of elements) {
+            const url = element.attr("href");
+            for (const cat of pre_categories) {
+              if (url === cat  || url.endsWith("/" + cat)) {
+                categories[cat] = url;
+                break;
+              }
+            }
+        }
+        return categories;
+    }
+
     async getItems(category, url) {
-      const url1 = "/" + category + url;
+      const category_urls = await this.getCategoryUrls();
+      if (category in category_urls) {
+      	category = category_urls[category];
+      }
+      const url1 = category;
       const res = await this.request(url1);
       const doc = new Document(res);
       const elements = doc.select(".gap-5 > div");
@@ -138,7 +194,7 @@ const mangayomiSources = [{
       const streams = [];
       const lines = codigo.split('\n');
       const prefix = url.replace('playlist.m3u8', '').replace('video.m3u8', '');
-      const stream_headers =  {
+      const stream_headers= {
           Referer: "https://surrit.store/",
           Origin: "https://surrit.store"
         }

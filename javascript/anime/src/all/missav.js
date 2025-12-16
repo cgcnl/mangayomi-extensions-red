@@ -98,7 +98,7 @@ const mangayomiSources = [{
       if (category in category_urls) {
       	category = category_urls[category];
       }
-      const url1 = category;
+      const url1 = category + url;
       const res = await this.request(url1);
       const doc = new Document(res);
       const elements = doc.select(".gap-5 > div");
